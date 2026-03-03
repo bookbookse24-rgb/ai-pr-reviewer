@@ -11,6 +11,14 @@ function verifySignature(req) {
 }
 
 async function handleWebhook(req, res) {
+  // Validate required environment variables
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+  }
+  if (!process.env.GITHUB_APP_ID || !process.env.GITHUB_PRIVATE_KEY) {
+    return res.status(500).json({ error: 'GitHub App credentials not configured' });
+  }
+  
   if (!verifySignature(req)) {
     return res.status(401).json({ error: 'Invalid signature' });
   }

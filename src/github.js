@@ -2,6 +2,9 @@ const { Octokit } = require('@octokit/rest');
 const { createAppAuth } = require('@octokit/auth-app');
 
 function getOctokit(installationId) {
+  if (!process.env.GITHUB_PRIVATE_KEY) {
+    throw new Error('GITHUB_PRIVATE_KEY environment variable is required');
+  }
   return new Octokit({
     authStrategy: createAppAuth,
     auth: {

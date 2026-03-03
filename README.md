@@ -20,14 +20,22 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 - Priority support
 - Slack/Discord integration
 
-👉 [Get Pro on Gumroad](https://your-gumroad-link.com)
+👉 [Get Pro on Gumroad](https://gumroad.com/l/ai-pr-reviewer-pro)
 
 ## Setup
 
-1. Go to [Render.com deployment](#) or use Docker
-2. Set `ANTHROPIC_API_KEY` environment variable
-3. Install GitHub App on your repository
-4. Enjoy automated PR reviews!
+1. Create a GitHub App at https://github.com/settings/apps/new
+   - **Webhook URL**: Your deployed URL (e.g., https://your-app.onrender.com/webhook)
+   - **Permissions**: Pull requests (read), Issues (read)
+   - Subscribe to: Pull request events
+2. Deploy to [Render.com](https://render.com/deploy?repo=https://github.com/bookbookse24-rgb/ai-pr-reviewer)
+3. Set environment variables:
+   - `ANTHROPIC_API_KEY` - Your Anthropic API key
+   - `GITHUB_APP_ID` - From GitHub App settings
+   - `GITHUB_PRIVATE_KEY` - Private key from GitHub App (replace newlines with \n)
+   - `GITHUB_WEBHOOK_SECRET` - Generate a secure random string
+4. Install the GitHub App on your repository
+5. Visit `/setup` endpoint to verify configuration
 
 ## Environment Variables
 
