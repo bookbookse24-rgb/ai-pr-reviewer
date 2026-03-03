@@ -12,7 +12,15 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 
 ## Pricing
 
-**$29/month** - Unlimited PR reviews for private repositories
+**Free Tier**: 10 PR reviews/month, public repos only
+**Pro ($29/month)**: Unlimited PR reviews for private repositories
+- Security vulnerability scanning
+- Code quality scoring
+- Custom review prompts
+- Priority support
+- Slack/Discord integration
+
+👉 [Get Pro on Gumroad](https://your-gumroad-link.com)
 
 ## Setup
 
