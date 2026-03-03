@@ -5,20 +5,23 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 ## Features
 
 - **Automatic Reviews**: Every PR gets an AI-powered review within minutes
-- **Security Analysis**: Detects common vulnerabilities and security issues
+- **Security Analysis**: Detects common vulnerabilities and security issues (Pro)
 - **Code Quality**: Suggests improvements for readability and performance
 - **Best Practices**: Checks for language-specific best practices
+- **PR Statistics**: Shows files changed, lines added/removed, languages detected
 - **Multi-Language Support**: Python, JavaScript, TypeScript, Go, Rust, and more
+- **Structured Feedback**: Organized by Security, Bugs, Improvements, and Good Practices
 
 ## Pricing
 
 **Free Tier**: 10 PR reviews/month, public repos only
 **Pro ($29/month)**: Unlimited PR reviews for private repositories
-- Security vulnerability scanning
+- 🔒 Advanced security vulnerability scanning (SQL injection, XSS, command injection)
 - Code quality scoring
 - Custom review prompts
 - Priority support
 - Slack/Discord integration
+- Detailed PR statistics
 
 👉 [Get Pro on Gumroad](https://gumroad.com/l/ai-pr-reviewer-pro)
 
@@ -34,6 +37,7 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
    - `GITHUB_APP_ID` - From GitHub App settings
    - `GITHUB_PRIVATE_KEY` - Private key from GitHub App (replace newlines with \n)
    - `GITHUB_WEBHOOK_SECRET` - Generate a secure random string
+   - `ENABLE_SECURITY_SCAN` - Set to "true" for Pro security features
 4. Install the GitHub App on your repository
 5. Visit `/setup` endpoint to verify configuration
 
@@ -43,6 +47,8 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | Your Anthropic API key |
 | `GITHUB_WEBHOOK_SECRET` | Webhook secret for verification |
+| `ENABLE_SECURITY_SCAN` | Enable advanced security scanning (Pro) |
+| `AI_MODEL` | Override default model (e.g., claude-opus-4-6) |
 
 ## Deploy
 
@@ -61,11 +67,28 @@ Click the deploy button in render.yaml
 
 The AI will analyze your PR and provide feedback like:
 
-> **Security**: ⚠️ Potential SQL injection detected in `db/query.js`
+> ## 🔒 Security Scan Results
 > 
-> **Code Quality**: Consider using `const` instead of `var` in `utils.js:5`
+> ⚠️ **Critical**: Potential SQL injection in `db/query.js:23`
+> ```js
+> query("SELECT * FROM users WHERE id = " + userId)
+> ```
+> **Fix**: Use parameterized queries
 > 
-> **Best Practices**: Add error handling for async function in `api/routes.js:12`
+> ## 🐛 Bugs & Issues
+> 
+> - Null check missing in `utils.js:15` - may cause runtime error
+> 
+> ## 💡 Code Improvements
+> 
+> - Consider using `const` instead of `var` in `utils.js:5`
+> 
+> ## ✅ Good Practices
+> 
+> - Proper error handling in `api/routes.js:12`
+> 
+> ---
+> **Severity**: 🟡 Medium | **Confidence**: 8/10
 
 ## License
 
