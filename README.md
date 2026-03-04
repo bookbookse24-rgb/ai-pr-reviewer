@@ -5,9 +5,12 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 ## Features
 
 - **Automatic Reviews**: Every PR gets an AI-powered review within minutes
+- **Proper PR Reviews**: Shows in the "Reviews" tab (not just issue comments)
+- **Approve/Request Changes**: Can optionally approve or request changes
 - **Security Analysis**: Detects common vulnerabilities and security issues (Pro)
 - **Code Quality**: Suggests improvements for readability and performance
 - **Best Practices**: Checks for language-specific best practices
+- **Usage Tracking**: Built-in stats endpoint for monitoring (Pro tier limiting)
 - **PR Statistics**: Shows files changed, lines added/removed, languages detected
 - **Multi-Language Support**: Python, JavaScript, TypeScript, Go, Rust, and more
 - **Structured Feedback**: Organized by Security, Bugs, Improvements, and Good Practices
@@ -23,7 +26,7 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 - Slack/Discord integration
 - Detailed PR statistics
 
-👉 [Get Pro on Gumroad](https://gumroad.com/l/ai-pr-reviewer-pro)
+⏳ Pro access coming soon - [Join waitlist](https://forms.gle/waitlist)
 
 ## Setup
 
@@ -49,6 +52,13 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 | `GITHUB_WEBHOOK_SECRET` | Webhook secret for verification |
 | `ENABLE_SECURITY_SCAN` | Enable advanced security scanning (Pro) |
 | `AI_MODEL` | Override default model (e.g., claude-opus-4-6) |
+| `FREE_TIER_LIMIT` | Free tier PR limit (default: 10/month) |
+
+## API Endpoints
+
+- `GET /health` - Health check
+- `GET /setup` - Verify configuration
+- `GET /stats/:owner/:repo` - Usage statistics for a repository
 
 ## Deploy
 

@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { getOctokit, getPRDiff, postReviewComment } = require('./github');
 const { reviewCode } = require('./reviewer');
+const { trackUsage, getUsage } = require('./index');
 
 function verifySignature(req) {
   const sig = req.headers['x-hub-signature-256'];
@@ -28,6 +29,22 @@ async function handleWebhook(req, res) {
 
   if (event !== 'pull_request') return res.json({ ok: true, skipped: true });
   if (!['opened', 'synchronize'].includes(payload.action)) return res.json({ ok: true, skipped: true });
+
+  // Check usage limits for free tier
+  const repoFullName = payload.repository.full_name;
+  const freeLimit = parseInt(process.env.FREE_TIER_LIMIT) || 10;
+  const usage = getUsage(repoFullName);
+  
+  if (usage.today >= freeLimit) {
+    return res.json({ 
+      ok: false, 
+      error: 'Free tier limit reached',
+      upgrade: 'Pro tier required for unlimited reviews'
+    });
+  }
+
+  // Track this review
+  trackUsage(repoFullName);
 
   // Check if security scan is enabled (Pro feature)
   const securityScanEnabled = process.env.ENABLE_SECURITY_SCAN === 'true';
