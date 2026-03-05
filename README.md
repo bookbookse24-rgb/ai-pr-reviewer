@@ -19,8 +19,9 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 
 **Free Tier**: 10 PR reviews/month, public repos only
 **Pro ($29/month)**: Unlimited PR reviews for private repositories
-- 🔒 Advanced security vulnerability scanning (SQL injection, XSS, command injection)
-- Code quality scoring
+- 🔒 Advanced security vulnerability scanning (SQL injection, XSS, command injection, SSRF, XXE, and 20+ more)
+- 📊 Code quality scoring (Readability, Maintainability, Error Handling, Performance)
+- 🎯 Detailed PR summary and overview
 - Custom review prompts
 - Priority support
 - Slack/Discord integration
@@ -51,14 +52,19 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 | `ANTHROPIC_API_KEY` | Your Anthropic API key |
 | `GITHUB_WEBHOOK_SECRET` | Webhook secret for verification |
 | `ENABLE_SECURITY_SCAN` | Enable advanced security scanning (Pro) |
+| `ENABLE_QUALITY_SCORE` | Enable code quality scoring (Pro) |
 | `AI_MODEL` | Override default model (e.g., claude-opus-4-6) |
 | `FREE_TIER_LIMIT` | Free tier PR limit (default: 10/month) |
 
 ## API Endpoints
 
 - `GET /health` - Health check
+- `GET /status` - Comprehensive status (config, usage, API connectivity test)
 - `GET /setup` - Verify configuration
 - `GET /stats/:owner/:repo` - Usage statistics for a repository
+- `GET /stats` - Global usage statistics across all tracked repos
+- `POST /subscribe` - Join waitlist (email required in body)
+- `GET /subscribers/count` - Get subscriber count (for analytics)
 
 ## Deploy
 

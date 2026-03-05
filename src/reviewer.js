@@ -1,5 +1,5 @@
 const Anthropic = require('@anthropic-ai/sdk');
-const { REVIEW_PROMPT, SECURITY_SCAN_PROMPT } = require('./prompts');
+const { REVIEW_PROMPT, SECURITY_SCAN_PROMPT, CODE_QUALITY_PROMPT } = require('./prompts');
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -53,12 +53,32 @@ async function reviewCode(diff, options = {}) {
     try {
       const securityMsg = await client.messages.create({
         model: MODEL,
-        max_tokens: 512,
+        max_tokens: 1024,
         messages: [{ role: 'user', content: SECURITY_SCAN_PROMPT(truncated) }],
       });
       securityFindings = securityMsg.content[0].text;
     } catch (e) {
       console.log('Security scan skipped:', e.message);
+    }
+  }
+
+  // Run code quality scoring if enabled (Pro feature)
+  let qualityScore = null;
+  if (options.qualityScore) {
+    try {
+      const qualityMsg = await client.messages.create({
+        model: MODEL,
+        max_tokens: 256,
+        messages: [{ role: 'user', content: CODE_QUALITY_PROMPT(truncated) }],
+      });
+      const responseText = qualityMsg.content[0].text;
+      // Extract JSON from response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        qualityScore = JSON.parse(jsonMatch[0]);
+      }
+    } catch (e) {
+      console.log('Quality scoring skipped:', e.message);
     }
   }
 
@@ -73,6 +93,12 @@ async function reviewCode(diff, options = {}) {
   let fullReview = message.content[0].text;
   if (securityFindings && !securityFindings.includes('no vulnerabilities detected')) {
     fullReview = `## 🔒 Security Scan Results\n\n${securityFindings}\n\n---\n\n${fullReview}`;
+  }
+
+  // Add quality score if available
+  if (qualityScore) {
+    const scoreSection = `\n---\n\n## 📊 Code Quality Score\n\n| Category | Score |\n|----------|-------|\n| Readability | ${qualityScore.readability}/100 |\n| Maintainability | ${qualityScore.maintainability}/100 |\n| Error Handling | ${qualityScore.errorHandling}/100 |\n| Performance | ${qualityScore.performance}/100 |\n| **Overall** | **${qualityScore.overall}/100** |\n\n${qualityScore.summary}`;
+    fullReview += scoreSection;
   }
 
   return fullReview;

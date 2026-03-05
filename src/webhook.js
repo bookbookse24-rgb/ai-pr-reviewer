@@ -46,8 +46,9 @@ async function handleWebhook(req, res) {
   // Track this review
   trackUsage(repoFullName);
 
-  // Check if security scan is enabled (Pro feature)
+  // Check if Pro features are enabled
   const securityScanEnabled = process.env.ENABLE_SECURITY_SCAN === 'true';
+  const qualityScoreEnabled = process.env.ENABLE_QUALITY_SCORE === 'true';
 
   res.json({ ok: true, message: 'Review queued' });
 
@@ -55,10 +56,13 @@ async function handleWebhook(req, res) {
     const { repository, pull_request, installation } = payload;
     const octokit = getOctokit(installation.id);
     const diff = await getPRDiff(octokit, repository.owner.login, repository.name, pull_request.number);
-    const review = await reviewCode(diff, { securityScan: securityScanEnabled });
+    const review = await reviewCode(diff, { 
+      securityScan: securityScanEnabled,
+      qualityScore: qualityScoreEnabled 
+    });
     if (review) {
       await postReviewComment(octokit, repository.owner.login, repository.name, pull_request.number, review);
-      console.log(`✅ Reviewed PR #${pull_request.number} in ${repository.full_name}${securityScanEnabled ? ' (with security scan)' : ''}`);
+      console.log(`✅ Reviewed PR #${pull_request.number} in ${repository.full_name}${securityScanEnabled ? ' (security+quality)' : ''}`);
     }
   } catch (err) {
     console.error('Review error:', err.message);
