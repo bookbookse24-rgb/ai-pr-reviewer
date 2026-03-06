@@ -11,6 +11,33 @@ const PORT = process.env.PORT || 3000;
 // Email capture file
 const SUBSCRIBERS_FILE = path.join(__dirname, '..', 'subscribers.json');
 
+// ============================================
+// PER-REPO CONFIGURATION (Pro Feature)
+// ============================================
+const CONFIG_FILE = path.join(__dirname, '..', 'repo-configs.json');
+
+function loadConfigs() {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    }
+  } catch (e) { console.error('Error loading configs:', e.message); }
+  return {};
+}
+
+function saveConfig(owner, repo, config) {
+  const configs = loadConfigs();
+  const key = `${owner}/${repo}`;
+  configs[key] = { ...configs[key], ...config, updated: new Date().toISOString() };
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(configs, null, 2));
+  return configs[key];
+}
+
+function getConfig(owner, repo) {
+  const configs = loadConfigs();
+  return configs[`${owner}/${repo}`] || {};
+}
+
 function loadSubscribers() {
   try {
     if (fs.existsSync(SUBSCRIBERS_FILE)) {
@@ -316,7 +343,429 @@ app.get('/stats', (req, res) => {
   });
 });
 
+// ============================================
+// PER-REPO CONFIGURATION API (Pro Feature)
+// ============================================
+
+// Get config for a specific repo
+app.get('/config/:owner/:repo', (req, res) => {
+  const { owner, repo } = req.params;
+  const config = getConfig(owner, repo);
+  
+  // Mask sensitive data
+  const safeConfig = { ...config };
+  delete safeConfig.stripeCustomerId;
+  delete safeConfig.proApiKey;
+  
+  res.json({
+    repo: `${owner}/${repo}`,
+    config: safeConfig,
+    isPro: !!config.isPro
+  });
+});
+
+// Set config for a specific repo (Pro feature)
+app.post('/config/:owner/:repo', (req, res) => {
+  const { owner, repo } = req.params;
+  const { 
+    isPro, 
+    customPrompt, 
+    filters, 
+    labelSet,
+    slackWebhook,
+    discordWebhook,
+    notifyOn,
+    autoApproveSafe
+  } = req.body;
+  
+  const currentConfig = getConfig(owner, repo);
+  
+  // Only allow Pro features if isPro is set
+  const newConfig = {};
+  if (isPro || currentConfig.isPro) {
+    newConfig.isPro = true;
+    if (customPrompt) newConfig.customPrompt = customPrompt;
+    if (filters) newConfig.filters = filters;
+    if (labelSet) newConfig.labelSet = labelSet;
+    if (slackWebhook) newConfig.slackWebhook = slackWebhook;
+    if (discordWebhook) newConfig.discordWebhook = discordWebhook;
+    if (notifyOn) newConfig.notifyOn = notifyOn;
+    if (autoApproveSafe !== undefined) newConfig.autoApproveSafe = autoApproveSafe;
+  }
+  
+  const saved = saveConfig(owner, repo, newConfig);
+  
+  // Mask sensitive data in response
+  delete saved.slackWebhook;
+  delete saved.discordWebhook;
+  
+  res.json({
+    ok: true,
+    repo: `${owner}/${repo}`,
+    config: saved,
+    message: saved.isPro ? 'Pro features enabled' : 'Config saved (upgrade to Pro for advanced features)'
+  });
+});
+
+// ============================================
+// STRIPE CHECKOUT (Pro Feature)
+// ============================================
+
+const stripe = require('stripe');
+let stripeClient = null;
+
+// Initialize Stripe if key is provided
+if (process.env.STRIPE_SECRET_KEY) {
+  stripeClient = stripe(process.env.STRIPE_SECRET_KEY);
+}
+
+// Create Stripe checkout session for Pro subscription
+app.post('/checkout', async (req, res) => {
+  const { email, repo, successUrl, cancelUrl } = req.body;
+  
+  if (!stripeClient) {
+    return res.status(503).json({ error: 'Payments not configured. Contact support.' });
+  }
+  
+  if (!email) {
+    return res.status(400).json({ error: 'Email required' });
+  }
+  
+  try {
+    const priceId = process.env.STRIPE_PRICE_ID || 'price_pro_monthly';
+    
+    const session = await stripeClient.checkout.sessions.create({
+      payment_method_types: ['card'],
+      mode: 'subscription',
+      customer_email: email,
+      line_items: [{ price: priceId, quantity: 1 }],
+      success_url: successUrl || process.env.SUCCESS_URL || 'https://aiprreviewer.dev/pro?success=true',
+      cancel_url: cancelUrl || process.env.CANCEL_URL || 'https://aiprreviewer.dev/pro?cancelled=true',
+      metadata: {
+        repo: repo || 'all',
+        tier: 'pro'
+      }
+    });
+    
+    // Store pending subscription
+    const configs = loadConfigs();
+    if (repo) {
+      const key = repo;
+      configs[key] = configs[key] || {};
+      configs[key].pendingSubscription = session.id;
+      fs.writeFileSync(CONFIG_FILE, JSON.stringify(configs, null, 2));
+    }
+    
+    res.json({ sessionId: session.id, url: session.url });
+  } catch (e) {
+    console.error('Stripe error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Stripe webhook handler
+app.post('/webhook/stripe', express.raw({ type: 'application/json' }), async (req, res) => {
+  if (!stripeClient) {
+    return res.status(503).json({ error: 'Stripe not configured' });
+  }
+  
+  const sig = req.headers['stripe-signature'];
+  let event;
+  
+  try {
+    event = stripeClient.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (e) {
+    console.error('Stripe webhook error:', e.message);
+    return res.status(400).send(`Webhook Error: ${e.message}`);
+  }
+  
+  // Handle subscription events
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object;
+    const repo = session.metadata?.repo;
+    
+    if (repo && repo !== 'all') {
+      const [owner, reponame] = repo.split('/');
+      saveConfig(owner, reponame, { 
+        isPro: true, 
+        stripeCustomerId: session.customer,
+        subscriptionId: session.subscription
+      });
+      console.log(`✅ Pro activated for ${repo}`);
+    }
+  }
+  
+  if (event.type === 'customer.subscription.deleted') {
+    const subscription = event.data.object;
+    // Find and update configs with this customer
+    const configs = loadConfigs();
+    for (const [key, config] of Object.entries(configs)) {
+      if (config.stripeCustomerId === subscription.customer) {
+        config.isPro = false;
+        config.subscriptionId = null;
+        console.log(`❌ Pro deactivated for ${key}`);
+      }
+    }
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(configs, null, 2));
+  }
+  
+  res.json({ received: true });
+});
+
+// Check Pro status
+app.get('/pro/status', (req, res) => {
+  const { repo } = req.query;
+  
+  if (!repo) {
+    return res.status(400).json({ error: 'repo required' });
+  }
+  
+  const [owner, reponame] = repo.split('/');
+  const config = getConfig(owner, reponame);
+  
+  res.json({
+    repo,
+    isPro: !!config.isPro,
+    features: config.isPro ? [
+      'custom_prompts',
+      'per_repo_config',
+      'slack_notifications',
+      'discord_notifications',
+      'filters',
+      'bulk_operations',
+      'team_analytics'
+    ] : []
+  });
+});
+
+// ============================================
+// SLACK/DISCORD NOTIFICATIONS (Pro Feature)
+// ============================================
+
+async function sendSlackNotification(webhookUrl, message, repo) {
+  if (!webhookUrl) return;
+  
+  try {
+    const fetch = (await import('node-fetch')).default;
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: `🤖 *AI PR Review* - ${repo}`,
+        blocks: [
+          {
+            type: 'section',
+            text: { type: 'mrkdwn', text: message }
+          }
+        ]
+      })
+    });
+  } catch (e) {
+    console.error('Slack notification error:', e.message);
+  }
+}
+
+async function sendDiscordNotification(webhookUrl, message, repo) {
+  if (!webhookUrl) return;
+  
+  try {
+    const fetch = (await import('node-fetch')).default;
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: `🤖 **AI PR Review** - ${repo}`,
+        embeds: [{
+          description: message,
+          color: 5814783
+        }]
+      })
+    });
+  } catch (e) {
+    console.error('Discord notification error:', e.message);
+  }
+}
+
+// Test notification endpoint
+app.post('/notify/test', async (req, res) => {
+  const { type, webhook, repo } = req.body;
+  
+  if (!webhook || !type) {
+    return res.status(400).json({ error: 'type and webhook required' });
+  }
+  
+  const testMessage = '✅ Test notification from AI PR Reviewer!';
+  
+  if (type === 'slack') {
+    await sendSlackNotification(webhook, testMessage, repo || 'test-repo');
+  } else if (type === 'discord') {
+    await sendDiscordNotification(webhook, testMessage, repo || 'test-repo');
+  } else {
+    return res.status(400).json({ error: 'type must be slack or discord' });
+  }
+  
+  res.json({ ok: true, message: 'Test notification sent' });
+});
+
 app.post('/webhook', handleWebhook);
+
+// ============================================
+// NEW: Team Analytics Dashboard (Pro Feature)
+// ============================================
+
+// In-memory analytics store (use Redis in production)
+const analyticsStore = {
+  reviews: [],  // { repo, pr, author, timestamp, stats, size, score }
+  dailyStats: new Map()  // "2026-03-06" -> { reviews: 0, repos: Set, authors: Set }
+};
+
+function recordReviewAnalytics(repoFullName, prNumber, author, diffStats, qualityScore) {
+  const timestamp = new Date();
+  const dateKey = timestamp.toISOString().split('T')[0];
+  
+  // Record individual review
+  analyticsStore.reviews.push({
+    repo: repoFullName,
+    pr: prNumber,
+    author,
+    timestamp: timestamp.toISOString(),
+    stats: diffStats,
+    score: qualityScore
+  });
+  
+  // Keep only last 30 days
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  analyticsStore.reviews = analyticsStore.reviews.filter(r => 
+    new Date(r.timestamp) > thirtyDaysAgo
+  );
+  
+  // Update daily stats
+  if (!analyticsStore.dailyStats.has(dateKey)) {
+    analyticsStore.dailyStats.set(dateKey, { 
+      reviews: 0, 
+      repos: new Set(), 
+      authors: new Set(),
+      totalLines: 0,
+      avgSize: 0
+    });
+  }
+  const day = analyticsStore.dailyStats.get(dateKey);
+  day.reviews++;
+  day.repos.add(repoFullName);
+  day.authors.add(author);
+  day.totalLines += diffStats.totalLines;
+}
+
+function getTeamAnalytics(repoFullName, days = 30) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+  
+  const reviews = analyticsStore.reviews.filter(r => 
+    new Date(r.timestamp) > cutoff && (!repoFullName || r.repo === repoFullName)
+  );
+  
+  // Group by author
+  const byAuthor = {};
+  reviews.forEach(r => {
+    if (!byAuthor[r.author]) {
+      byAuthor[r.author] = { prs: 0, linesAdded: 0, linesRemoved: 0, avgScore: 0, scores: [] };
+    }
+    byAuthor[r.author].prs++;
+    byAuthor[r.author].linesAdded += r.stats?.linesAdded || 0;
+    byAuthor[r.author].linesRemoved += r.stats?.linesRemoved || 0;
+    if (r.score?.overall) {
+      byAuthor[r.author].scores.push(r.score.overall);
+    }
+  });
+  
+  // Calculate averages
+  Object.values(byAuthor).forEach(a => {
+    a.avgScore = a.scores.length > 0 
+      ? Math.round(a.scores.reduce((s, v) => s + v, 0) / a.scores.length)
+      : null;
+    delete a.scores;
+  });
+  
+  // Group by day
+  const byDay = {};
+  reviews.forEach(r => {
+    const day = r.timestamp.split('T')[0];
+    if (!byDay[day]) byDay[day] = { reviews: 0, prs: 0, lines: 0 };
+    byDay[day].reviews++;
+    byDay[day].prs++;
+    byDay[day].lines += r.stats?.totalLines || 0;
+  });
+  
+  // Summary stats
+  const totalLines = reviews.reduce((sum, r) => sum + (r.stats?.totalLines || 0), 0);
+  const avgReviewSize = reviews.length > 0 ? Math.round(totalLines / reviews.length) : 0;
+  
+  return {
+    summary: {
+      totalReviews: reviews.length,
+      uniqueAuthors: Object.keys(byAuthor).length,
+      totalLinesChanged: totalLines,
+      avgReviewSize: avgReviewSize,
+      period: days
+    },
+    byAuthor,
+    byDay
+  };
+}
+
+// Team analytics endpoint (Pro feature)
+app.get('/analytics', (req, res) => {
+  const { repo, days } = req.query;
+  const analytics = getTeamAnalytics(repo, parseInt(days) || 30);
+  
+  // Add velocity metrics
+  const velocity = calculateVelocity(analytics);
+  analytics.velocity = velocity;
+  
+  res.json(analytics);
+});
+
+function calculateVelocity(analytics) {
+  const { byDay, summary } = analytics;
+  const days = Object.keys(byDay).sort();
+  
+  if (days.length < 2) {
+    return { trend: 'insufficient_data', avgReviewsPerDay: 0 };
+  }
+  
+  // Calculate trend
+  const firstHalf = days.slice(0, Math.floor(days.length / 2));
+  const secondHalf = days.slice(Math.floor(days.length / 2));
+  
+  const firstAvg = firstHalf.reduce((sum, d) => sum + byDay[d].reviews, 0) / firstHalf.length;
+  const secondAvg = secondHalf.reduce((sum, d) => sum + byDay[d].reviews, 0) / secondHalf.length;
+  
+  let trend = 'stable';
+  if (secondAvg > firstAvg * 1.2) trend = 'improving';
+  else if (secondAvg < firstAvg * 0.8) trend = 'declining';
+  
+  return {
+    trend,
+    avgReviewsPerDay: Math.round(summary.totalReviews / days.length),
+    mostActiveDay: Object.entries(byDay).sort((a, b) => b[1].reviews - a[1].reviews)[0]?.[0],
+    mostActiveAuthor: Object.entries(analytics.byAuthor).sort((a, b) => b[1].prs - a[1].prs)[0]?.[0]
+  };
+}
+
+// Review analytics endpoint - call after each PR review
+app.post('/analytics/record', (req, res) => {
+  const { repo, pr, author, stats, score } = req.body;
+  if (!repo || !pr) {
+    return res.status(400).json({ error: 'repo and pr required' });
+  }
+  recordReviewAnalytics(repo, pr, author, stats, score);
+  res.json({ ok: true });
+});
 
 // NEW: PR Description Generator endpoint
 app.post('/describe', async (req, res) => {
@@ -360,6 +809,69 @@ app.post('/stats/diff', (req, res) => {
   const files = extractFileChanges(diff);
   
   res.json({ stats, files });
+});
+
+// NEW: PR Summary endpoint (Pro feature) - High-level overview for team leads
+app.post('/summary', async (req, res) => {
+  const { diff, prTitle, prBody } = req.body;
+  if (!diff) return res.status(400).json({ error: 'Diff required' });
+  
+  // Check if Pro feature is enabled
+  const isPro = process.env.DEFAULT_PRO === 'true';
+  if (!isPro) {
+    return res.status(403).json({ 
+      error: 'PR Summary is a Pro feature',
+      upgrade: 'https://aiprreviewer.dev/#pricing'
+    });
+  }
+  
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+  }
+  
+  try {
+    const stats = extractDiffStats(diff);
+    const files = extractFileChanges(diff);
+    const analysis = analyzePRSize(diff);
+    
+    // Generate AI summary if API key available
+    let aiSummary = null;
+    try {
+      const Anthropic = require('@anthropic-ai/sdk');
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      
+      const prompt = `Analyze this PR and provide a brief executive summary (2-3 sentences max):
+      
+PR Title: ${prTitle || 'N/A'}
+PR Body: ${prBody || 'N/A'}
+
+Files changed: ${files.map(f => f.file).join(', ')}
+
+Diff stats: ${stats.filesChanged} files, +${stats.additions} lines, -${stats.deletions} lines
+
+Provide a summary a team lead would understand. Focus on what this PR does at a high level.`;
+
+      const response = await client.messages.create({
+        model: process.env.AI_MODEL || 'claude-haiku-4-5',
+        max_tokens: 150,
+        messages: [{ role: 'user', content: prompt }]
+      });
+      
+      aiSummary = response.content[0].text;
+    } catch (e) {
+      console.error('AI summary error:', e.message);
+    }
+    
+    res.json({
+      summary: aiSummary || 'Enable Pro to get AI-powered summaries',
+      stats,
+      files: files.slice(0, 10), // Top 10 files
+      analysis,
+      isPro: true
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.listen(PORT, '0.0.0.0', () => console.log(`🤖 AI PR Reviewer running on port ${PORT}`));
