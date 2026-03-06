@@ -318,4 +318,48 @@ app.get('/stats', (req, res) => {
 
 app.post('/webhook', handleWebhook);
 
+// NEW: PR Description Generator endpoint
+app.post('/describe', async (req, res) => {
+  const { diff } = req.body;
+  if (!diff) return res.status(400).json({ error: 'Diff required' });
+  
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+  }
+  
+  try {
+    const description = await generateDescription(diff);
+    const stats = extractDiffStats(diff);
+    const files = extractFileChanges(diff);
+    
+    res.json({
+      description,
+      stats,
+      files
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// NEW: PR Size Analysis endpoint
+app.post('/analyze', (req, res) => {
+  const { diff } = req.body;
+  if (!diff) return res.status(400).json({ error: 'Diff required' });
+  
+  const analysis = analyzePRSize(diff);
+  res.json(analysis);
+});
+
+// NEW: Get diff statistics endpoint
+app.post('/stats/diff', (req, res) => {
+  const { diff } = req.body;
+  if (!diff) return res.status(400).json({ error: 'Diff required' });
+  
+  const stats = extractDiffStats(diff);
+  const files = extractFileChanges(diff);
+  
+  res.json({ stats, files });
+});
+
 app.listen(PORT, '0.0.0.0', () => console.log(`🤖 AI PR Reviewer running on port ${PORT}`));

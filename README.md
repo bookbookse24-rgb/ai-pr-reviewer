@@ -14,6 +14,9 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 - **PR Statistics**: Shows files changed, lines added/removed, languages detected
 - **Multi-Language Support**: Python, JavaScript, TypeScript, Go, Rust, and more
 - **Structured Feedback**: Organized by Security, Bugs, Improvements, and Good Practices
+- **🎉 PR Description Generator**: Auto-generate professional PR descriptions from diffs
+- **📏 PR Size Analysis**: Warns about large PRs that should be split
+- **📁 File Change Breakdown**: Detailed per-file change analysis
 
 ## Pricing
 
@@ -58,13 +61,43 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 
 ## API Endpoints
 
+### Core Endpoints
 - `GET /health` - Health check
 - `GET /status` - Comprehensive status (config, usage, API connectivity test)
 - `GET /setup` - Verify configuration
+
+### Usage & Analytics
 - `GET /stats/:owner/:repo` - Usage statistics for a repository
 - `GET /stats` - Global usage statistics across all tracked repos
+
+### Marketing & Lead Capture
 - `POST /subscribe` - Join waitlist (email required in body)
 - `GET /subscribers/count` - Get subscriber count (for analytics)
+
+### 🔥 New: PR Tools (v1.3.0)
+- `POST /describe` - Generate PR description from diff
+- `POST /analyze` - Analyze PR size and get warnings
+- `POST /stats/diff` - Get detailed diff statistics
+
+### Example: Generate PR Description
+```bash
+curl -X POST https://your-app.onrender.com/describe \
+  -H "Content-Type: application/json" \
+  -d '{"diff": "diff --git a/src/index.js..."}'
+```
+
+### Example: Analyze PR Size
+```bash
+curl -X POST https://your-app.onrender.com/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"diff": "diff --git a/src/index.js..."}'
+```
+
+Response includes:
+- Files changed, lines added/removed
+- PR size category (small/medium/large/huge)
+- Warnings for large PRs
+- Recommendations
 
 ## Deploy
 
@@ -105,6 +138,33 @@ The AI will analyze your PR and provide feedback like:
 > 
 > ---
 > **Severity**: 🟡 Medium | **Confidence**: 8/10
+
+## Example PR Description (auto-generated)
+
+```markdown
+## Summary
+Adds user authentication middleware to protect API routes.
+
+## Motivation
+Currently, all API endpoints are publicly accessible. This poses a security risk for user data. We need to implement JWT-based authentication.
+
+## Changes
+- Added `authMiddleware.js` with JWT verification
+- Updated all API routes to use the middleware
+- Added user role checking for admin routes
+
+## Testing
+1. Test unauthenticated requests return 401
+2. Test valid JWT tokens grant access
+3. Test expired tokens return 401
+4. Test admin-only routes reject non-admin users
+
+## Breaking Changes
+None
+
+## Related Issues
+Fixes #45
+```
 
 ## License
 

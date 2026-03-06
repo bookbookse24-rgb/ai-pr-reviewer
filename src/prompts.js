@@ -5,6 +5,7 @@ const REVIEW_PROMPT = (diff, stats = {}) => {
 - Lines added: ${stats.linesAdded}
 - Lines removed: ${stats.linesRemoved}
 - Languages: ${stats.languages || 'Unknown'}
+- PR Size: ${stats.prSize || 'normal'}
 ` : '';
 
   return `You are an expert code reviewer. Review the following pull request diff and provide clear, actionable feedback.${statsSection}
@@ -102,4 +103,36 @@ PR Diff:
 ${diff}
 \`\`\``;
 
-module.exports = { REVIEW_PROMPT, SECURITY_SCAN_PROMPT, CODE_QUALITY_PROMPT };
+// NEW: PR Description Generator prompt
+const DESCRIPTION_PROMPT = (diff, stats = {}) => `Generate a professional pull request description based on the following diff.
+
+PR Statistics:
+- Files changed: ${stats.filesChanged || 'unknown'}
+- Lines added: ${stats.linesAdded || 0}
+- Lines removed: ${stats.linesRemoved || 0}
+- Languages: ${stats.languages || 'Unknown'}
+
+The description should include:
+1. **What** - What this PR changes/does (1-2 sentences)
+2. **Why** - Why this change is needed (context)
+3. **How** - Brief overview of the implementation
+4. **Testing** - How to test this PR
+5. **Screenshots** - If UI changes (add placeholders)
+6. **Breaking Changes** - Any breaking changes (or "None")
+7. **Related Issues** - Link to issues (or "None")
+
+Format as clean markdown that developers can copy-paste. Use these sections:
+- Summary
+- Motivation
+- Changes
+- Testing
+- Screenshots (if applicable)
+- Breaking Changes
+- Related Issues
+
+PR Diff:
+\`\`\`diff
+${diff}
+\`\`\``;
+
+module.exports = { REVIEW_PROMPT, SECURITY_SCAN_PROMPT, CODE_QUALITY_PROMPT, DESCRIPTION_PROMPT };

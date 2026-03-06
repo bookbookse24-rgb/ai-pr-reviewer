@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { getOctokit, getPRDiff, postReviewComment } = require('./github');
-const { reviewCode } = require('./reviewer');
+const { reviewCode, generateDescription, analyzePRSize, extractDiffStats, extractFileChanges } = require('./reviewer');
 const { trackUsage, getUsage } = require('./index');
 
 function verifySignature(req) {
