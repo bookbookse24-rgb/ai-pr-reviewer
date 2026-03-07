@@ -227,12 +227,61 @@ async function reviewCode(diff, options = {}) {
   return fullReview;
 }
 
+// Quick security scan - fast pattern-based detection without AI (free tier)
+function quickSecurityScan(diff) {
+  const findings = [];
+  const lines = diff.split('\n');
+  
+  // Patterns to detect
+  const patterns = [
+    { regex: /password\s*=\s*['"`]/i, severity: 'HIGH', type: 'hardcoded_secret', message: 'Hardcoded password detected' },
+    { regex: /api[_-]?key\s*=\s*['"`]/i, severity: 'HIGH', type: 'hardcoded_secret', message: 'Hardcoded API key detected' },
+    { regex: /secret\s*=\s*['"`]/i, severity: 'HIGH', type: 'hardcoded_secret', message: 'Hardcoded secret detected' },
+    { regex: /token\s*=\s*['"`]/i, severity: 'HIGH', type: 'hardcoded_secret', message: 'Hardcoded token detected' },
+    { regex: /exec\s*\(\s*.*\+/i, severity: 'HIGH', type: 'command_injection', message: 'Potential command injection risk' },
+    { regex: /system\s*\(/i, severity: 'HIGH', type: 'command_injection', message: 'System call with potential injection risk' },
+    { regex: /eval\s*\(/i, severity: 'HIGH', type: 'code_injection', message: 'eval() is dangerous' },
+    { regex: /innerHTML\s*=/i, severity: 'MEDIUM', type: 'xss', message: 'innerHTML assignment - potential XSS' },
+    { regex: /dangerouslySetInnerHTML/i, severity: 'MEDIUM', type: 'xss', message: 'dangerouslySetInnerHTML - potential XSS' },
+    { regex: /SELECT\s+.*\+\s*/i, severity: 'HIGH', type: 'sql_injection', message: 'Potential SQL injection' },
+    { regex: /process\.env\.ANTHROPIC_API_KEY/i, severity: 'LOW', type: 'secret_leak', message: 'Reference to Anthropic API key' },
+    { regex: /Math\.random\s*\(\s*\)/i, severity: 'MEDIUM', type: 'weak_random', message: 'Math.random() is not cryptographically secure' },
+    { regex: /TODO.*password/i, severity: 'MEDIUM', type: 'todo_security', message: 'TODO comment about password - potential security issue' },
+    { regex: /TODO.*security/i, severity: 'MEDIUM', type: 'todo_security', message: 'TODO comment about security' },
+    { regex: /\.\.\//i, severity: 'LOW', type: 'path_traversal', message: 'Path traversal pattern - verify input validation' },
+    { regex: /fetch\s*\(\s*.*\+/i, severity: 'MEDIUM', type: 'ssrf', message: 'Dynamic URL in fetch - potential SSRF' },
+    { regex: /http:\/\//i, severity: 'LOW', type: 'insecure_protocol', message: 'Insecure HTTP URL (not HTTPS)' },
+  ];
+  
+  lines.forEach((line, idx) => {
+    patterns.forEach(p => {
+      if (p.regex.test(line)) {
+        findings.push({
+          line: idx + 1,
+          severity: p.severity,
+          type: p.type,
+          message: p.message,
+          code: line.substring(0, 80)
+        });
+      }
+    });
+  });
+  
+  return {
+    scanType: 'quick',
+    findings: findings.slice(0, 20), // Limit to top 20
+    totalFindings: findings.length,
+    recommendation: findings.length > 0 ? 'Run full AI security scan for detailed analysis' : 'No obvious issues found'
+  };
+}
+
 module.exports = { 
   reviewCode, 
   generateDescription,
   analyzePRSize,
   extractDiffStats, 
   extractFileChanges,
+  quickSecurityScan,
   MODEL,
   PR_SIZE 
 };

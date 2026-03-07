@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const { handleWebhook } = require('./webhook');
+const { quickSecurityScan, extractDiffStats } = require('./reviewer');
 const fs = require('fs');
 const path = require('path');
 
@@ -93,7 +94,48 @@ module.exports = { trackUsage, getUsage };
 
 app.use(bodyParser.json());
 
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'ai-pr-reviewer' }));
+app.get('/health', (req, res) => {
+  const mem = process.memoryUsage();
+  res.json({ 
+    status: 'ok', 
+    service: 'ai-pr-reviewer',
+    version: '1.1.0',
+    timestamp: new Date().toISOString(),
+    uptime: Math.floor(process.uptime()),
+    memory: {
+      rss: Math.round(mem.rss / 1024 / 1024) + 'MB',
+      heapUsed: Math.round(mem.heapUsed / 1024 / 1024) + 'MB',
+      heapTotal: Math.round(mem.heapTotal / 1024 / 1024) + 'MB'
+    }
+  });
+});
+
+// Prometheus-style metrics endpoint
+app.get('/metrics', (req, res) => {
+  const subscribers = loadSubscribers();
+  const proCount = subscribers.filter(s => {
+    const PRO_TIERS = ['pro', 'business', 'enterprise'];
+    return PRO_TIERS.includes(s.tier);
+  }).length;
+  
+  let totalReviews = 0;
+  for (const count of usageStore.values()) {
+    totalReviews += count;
+  }
+  
+  const mem = process.memoryUsage();
+  
+  res.set('Content-Type', 'text/plain');
+  res.send(`# AI PR Reviewer Metrics
+ai_pr_reviewer_uptime_seconds ${Math.floor(process.uptime())}
+ai_pr_reviewer_total_reviews ${totalReviews}
+ai_pr_reviewer_free_users ${subscribers.length - proCount}
+ai_pr_reviewer_pro_users ${proCount}
+ai_pr_reviewer_tracked_repos ${usageStore.size}
+ai_pr_reviewer_memory_rss_bytes ${mem.rss}
+ai_pr_reviewer_memory_heap_used_bytes ${mem.heapUsed}
+`);
+});
 
 // Marketing landing page endpoint
 app.get('/', (req, res) => {
@@ -798,6 +840,15 @@ app.post('/analyze', (req, res) => {
   
   const analysis = analyzePRSize(diff);
   res.json(analysis);
+});
+
+// NEW: Quick Security Scan (free tier, no AI required)
+app.post('/scan/quick', (req, res) => {
+  const { diff } = req.body;
+  if (!diff) return res.status(400).json({ error: 'Diff required' });
+  
+  const result = quickSecurityScan(diff);
+  res.json(result);
 });
 
 // NEW: Get diff statistics endpoint

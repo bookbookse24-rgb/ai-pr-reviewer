@@ -17,6 +17,20 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 - **🎉 PR Description Generator**: Auto-generate professional PR descriptions from diffs
 - **📏 PR Size Analysis**: Warns about large PRs that should be split
 - **📁 File Change Breakdown**: Detailed per-file change analysis
+- **⚡ Quick Security Scan**: Fast pattern-based security detection (free tier, no AI needed)
+- **📊 Prometheus Metrics**: `/metrics` endpoint for monitoring
+- **💚 Enhanced Health Check**: Memory and uptime info
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check with memory info |
+| `/metrics` | GET | Prometheus-style metrics |
+| `/scan/quick` | POST | Fast security scan (free) |
+| `/analyze` | POST | PR size analysis |
+| `/describe` | POST | Generate PR description |
+| `/review` | POST | Full AI code review (Pro) |
 
 ## Pricing
 
