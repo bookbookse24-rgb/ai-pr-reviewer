@@ -26,7 +26,10 @@ Automated AI-powered code review for GitHub Pull Requests using Claude AI.
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/health` | GET | Health check with memory info |
+| `/webhook/test` | GET | Test webhook configuration |
+| `/webhook/test` | POST | Simulate webhook payload |
 | `/metrics` | GET | Prometheus-style metrics |
+| `/metrics/json` | GET | JSON metrics for monitoring |
 | `/scan/quick` | POST | Fast security scan (free) |
 | `/analyze` | POST | PR size analysis |
 | `/describe` | POST | Generate PR description |

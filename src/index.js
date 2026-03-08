@@ -110,6 +110,50 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Webhook test endpoint - helps users verify GitHub App configuration
+app.get('/webhook/test', (req, res) => {
+  const required = ['GITHUB_APP_ID', 'GITHUB_PRIVATE_KEY', 'GITHUB_WEBHOOK_SECRET', 'ANTHROPIC_API_KEY'];
+  const missing = required.filter(v => !process.env[v]);
+  
+  res.json({
+    service: 'ai-pr-reviewer',
+    endpoint: '/webhook/test',
+    status: missing.length === 0 ? 'ready' : 'misconfigured',
+    timestamp: new Date().toISOString(),
+    required_env_vars: required,
+    missing: missing,
+    webhook_url: `https://${req.get('host')}/webhook`,
+    setup_steps: [
+      '1. Create GitHub App at https://github.com/settings/apps/new',
+      '2. Set Webhook URL to: https://' + req.get('host') + '/webhook',
+      '3. Grant Pull request: read and Issues: read permissions',
+      '4. Subscribe to Pull request events',
+      '5. Install on your repository'
+    ]
+  });
+});
+
+// Test webhook delivery - simulates a PR event
+app.post('/webhook/test', express.json(), (req, res) => {
+  const { action, pull_request, repository } = req.body;
+  
+  // Validate it's a test payload
+  if (!pull_request || !repository) {
+    return res.status(400).json({
+      error: 'Invalid test payload',
+      hint: 'Send a payload with pull_request and repository fields'
+    });
+  }
+  
+  res.json({
+    received: true,
+    action: action || 'test',
+    repo: repository.full_name,
+    pr: pull_request.number,
+    message: 'Webhook received! If configured correctly, AI review will be posted.'
+  });
+});
+
 // Prometheus-style metrics endpoint
 app.get('/metrics', (req, res) => {
   const subscribers = loadSubscribers();
@@ -135,6 +179,40 @@ ai_pr_reviewer_tracked_repos ${usageStore.size}
 ai_pr_reviewer_memory_rss_bytes ${mem.rss}
 ai_pr_reviewer_memory_heap_used_bytes ${mem.heapUsed}
 `);
+});
+
+// JSON metrics endpoint for programmatic access
+app.get('/metrics/json', (req, res) => {
+  const subscribers = loadSubscribers();
+  const proCount = subscribers.filter(s => {
+    const PRO_TIERS = ['pro', 'business', 'enterprise'];
+    return PRO_TIERS.includes(s.tier);
+  }).length;
+  
+  let totalReviews = 0;
+  for (const count of usageStore.values()) {
+    totalReviews += count;
+  }
+  
+  const mem = process.memoryUsage();
+  
+  res.json({
+    service: 'ai-pr-reviewer',
+    version: '1.3.0',
+    uptime_seconds: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    metrics: {
+      total_reviews: totalReviews,
+      free_users: subscribers.length - proCount,
+      pro_users: proCount,
+      tracked_repos: usageStore.size
+    },
+    memory: {
+      rss_mb: Math.round(mem.rss / 1024 / 1024),
+      heap_used_mb: Math.round(mem.heapUsed / 1024 / 1024),
+      heap_total_mb: Math.round(mem.heapTotal / 1024 / 1024)
+    }
+  });
 });
 
 // Marketing landing page endpoint
